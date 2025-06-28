@@ -36,158 +36,126 @@ var __generator = (this && this.__generator) || function (thisArg, body) {
     }
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-// scrape-aba-pdfs.ts
-var playwright_1 = require("playwright");
 var fs = require("fs");
 var path = require("path");
-var pdf = require('pdf-parse');
-var ABA_URL = 'https://www.abarequireddisclosures.org/';
-function extractScholarshipData(text) {
+var node_fetch_1 = require("node-fetch");
+var pdfParse = require('pdf-parse');
+var _a = require('./config.js'), years = _a.years, sections = _a.sections;
+var OUTPUT_PDF_DIR = path.resolve('./data/compiled_pdfs');
+var OUTPUT_JSON_DIR = path.resolve('./data/compiled_json');
+if (!fs.existsSync(OUTPUT_PDF_DIR))
+    fs.mkdirSync(OUTPUT_PDF_DIR, { recursive: true });
+if (!fs.existsSync(OUTPUT_JSON_DIR))
+    fs.mkdirSync(OUTPUT_JSON_DIR, { recursive: true });
+function sanitize(name) {
+    return name.replace(/\s+/g, '_').replace(/[\/\\]/g, '_');
+}
+//function isLikelyPdf(buffer: Buffer<ArrayBufferLike>) {
+//  return buffer.slice(0, 5).toString() === '%PDF-';
+//}
+function downloadPdf(year, section) {
     return __awaiter(this, void 0, void 0, function () {
-        var lines, result, _i, lines_1, line, match, match, match;
+        var sectionSlug, url, res, buffer, pdfFile, err_1;
         return __generator(this, function (_a) {
-            lines = text.split('\n');
-            result = {};
-            for (_i = 0, lines_1 = lines; _i < lines_1.length; _i++) {
-                line = lines_1[_i];
-                if (line.includes('Full Tuition')) {
-                    match = line.match(/Full Tuition\s+(\d+)/);
-                    if (match)
-                        result.full_tuition = Number(match[1]);
-                }
-                if (line.includes('Half Tuition')) {
-                    match = line.match(/Half Tuition\s+(\d+)/);
-                    if (match)
-                        result.half_tuition = Number(match[1]);
-                }
-                if (line.includes('No Scholarship')) {
-                    match = line.match(/No Scholarship\s+(\d+)/);
-                    if (match)
-                        result.no_scholarship = Number(match[1]);
-                }
+            switch (_a.label) {
+                case 0:
+                    sectionSlug = encodeURIComponent(section);
+                    url = "https://www.abarequireddisclosures.org/Media/Compilation/".concat(year, "/").concat(sectionSlug, ".pdf");
+                    console.log("\u2B07\uFE0F  Fetching: ".concat(url));
+                    _a.label = 1;
+                case 1:
+                    _a.trys.push([1, 4, , 5]);
+                    return [4 /*yield*/, (0, node_fetch_1.default)(url)];
+                case 2:
+                    res = _a.sent();
+                    if (!res.ok) {
+                        console.error("\u274C Failed: HTTP ".concat(res.status));
+                        return [2 /*return*/, null];
+                    }
+                    return [4 /*yield*/, res.buffer()];
+                case 3:
+                    buffer = _a.sent();
+                    pdfFile = path.join(OUTPUT_PDF_DIR, "".concat(year, "_").concat(sanitize(String(section)), ".pdf"));
+                    fs.writeFileSync(pdfFile, buffer);
+                    console.log("\u2705 Saved PDF: ".concat(pdfFile));
+                    return [2 /*return*/, pdfFile];
+                case 4:
+                    err_1 = _a.sent();
+                    console.error("\u274C Error downloading ".concat(year, " - ").concat(section, ":"), err_1);
+                    return [2 /*return*/, null];
+                case 5: return [2 /*return*/];
             }
-            return [2 /*return*/, result];
         });
     });
 }
-function scrapeABAPDFs() {
+function parsePdfToJson(pdfFile, year, section) {
     return __awaiter(this, void 0, void 0, function () {
-        var browser, context, page, year, section, download, outputDir, filePath, pdfBuffer, stats, header, pdfData, parsedJson, jsonFilePath, error_1;
+        var buffer, data, result, jsonFile, err_2;
         return __generator(this, function (_a) {
             switch (_a.label) {
-                case 0: return [4 /*yield*/, playwright_1.chromium.launch({ headless: false })];
+                case 0:
+                    _a.trys.push([0, 2, , 3]);
+                    buffer = fs.readFileSync(pdfFile);
+                    return [4 /*yield*/, pdfParse(buffer)];
                 case 1:
-                    browser = _a.sent();
-                    return [4 /*yield*/, browser.newContext({
-                            acceptDownloads: true // 👈 allows Playwright to intercept native file downloads
-                        })];
-                case 2:
-                    context = _a.sent();
-                    return [4 /*yield*/, context.newPage()];
-                case 3:
-                    page = _a.sent();
-                    return [4 /*yield*/, page.goto(ABA_URL)];
-                case 4:
-                    _a.sent();
-                    // 1. Go to the 509 Required Disclosure page
-                    return [4 /*yield*/, page.click('text="509 Required Disclosure"')];
-                case 5:
-                    // 1. Go to the 509 Required Disclosure page
-                    _a.sent(); // triggers initial search
-                    // -- 1. open the Compilation panel (same as before) -----------------------
-                    return [4 /*yield*/, page.waitForSelector('text=COMPILATION - ALL SCHOOLS DATA', { timeout: 10000 })];
-                case 6:
-                    // -- 1. open the Compilation panel (same as before) -----------------------
-                    _a.sent();
-                    return [4 /*yield*/, page.click('text=COMPILATION - ALL SCHOOLS DATA')];
-                case 7:
-                    _a.sent();
-                    // -- 2. pick the Compilation-year  ------------------------------------------
-                    // a) by DOM position (0-based index) …
-                    return [4 /*yield*/, page.locator('select[aria-label="year select"]').nth(1).selectOption('2023')];
-                case 8:
-                    // -- 2. pick the Compilation-year  ------------------------------------------
-                    // a) by DOM position (0-based index) …
-                    _a.sent();
-                    year = '2023';
-                    //    – or –
-                    //
-                    // b) by scoping to its wrapper <div class="compyearinput"> …
-                    return [4 /*yield*/, page.selectOption('div.compyearinput select', year)];
-                case 9:
-                    //    – or –
-                    //
-                    // b) by scoping to its wrapper <div class="compyearinput"> …
-                    _a.sent();
-                    // ---------- 3. wait until the Section dropdown is populated ----------------
-                    // 3️⃣ Wait until the Section dropdown is populated
-                    return [4 /*yield*/, page.waitForSelector('div.compSectioninput select option:not([value=""])', { state: 'attached', timeout: 15000 } // ⬅️ changed line
-                        )];
-                case 10:
-                    // ---------- 3. wait until the Section dropdown is populated ----------------
-                    // 3️⃣ Wait until the Section dropdown is populated
-                    _a.sent();
-                    section = 'Grants and Scholarships';
-                    // 4️⃣ Choose the desired section
-                    return [4 /*yield*/, page.selectOption('div.compSectioninput select', { value: section })];
-                case 11:
-                    // 4️⃣ Choose the desired section
-                    _a.sent();
-                    return [4 /*yield*/, Promise.all([
-                            page.waitForEvent('download'), // 👈 NEW
-                            page.click('div.compbtn button:has-text("Generate Report")')
-                        ])];
-                case 12:
-                    download = (_a.sent())[0];
-                    outputDir = path.join(__dirname, 'compiled_pdfs');
-                    if (!fs.existsSync(outputDir))
-                        fs.mkdirSync(outputDir);
-                    filePath = path.join(outputDir, "".concat(year, "_").concat(section.replace(/\s+/g, "_"), ".pdf"));
-                    return [4 /*yield*/, download.saveAs(filePath)];
-                case 13:
-                    _a.sent();
-                    console.log("\u2705 Saved PDF to: ".concat(filePath));
-                    pdfBuffer = fs.readFileSync(filePath);
-                    stats = fs.statSync(filePath);
-                    if (stats.size < 1000) {
-                        console.error("\u274C PDF file is too small, likely empty or not downloaded correctly. Skipping: ".concat(filePath));
-                        return [2 /*return*/]; // Skip processing this file
-                    }
-                    header = pdfBuffer.toString().slice(0, 5);
-                    if (header !== '%PDF-') {
-                        console.error("\u274C Invalid PDF file format: ".concat(filePath));
-                        return [2 /*return*/]; // Skip processing this file
-                    }
-                    _a.label = 14;
-                case 14:
-                    _a.trys.push([14, 16, , 17]);
-                    return [4 /*yield*/, pdf(pdfBuffer)];
-                case 15:
-                    pdfData = _a.sent();
-                    console.log("📝 Extracted Text:", pdfData.text);
-                    parsedJson = {
+                    data = _a.sent();
+                    result = {
                         year: year,
                         section: section,
-                        data: extractScholarshipData(pdfData.text)
+                        text: data.text
                     };
-                    console.log("✅ Parsed JSON:", JSON.stringify(parsedJson, null, 2));
-                    jsonFilePath = filePath.replace('.pdf', '.json');
-                    fs.writeFileSync(jsonFilePath, JSON.stringify(parsedJson, null, 2));
-                    console.log("\u2705 Saved JSON to: ".concat(jsonFilePath));
-                    return [3 /*break*/, 17];
-                case 16:
-                    error_1 = _a.sent();
-                    console.error("\u274C Error parsing PDF:", error_1);
-                    return [3 /*break*/, 17];
-                case 17: 
-                // ✅ Convert to structured JSON
-                return [4 /*yield*/, browser.close()];
-                case 18:
-                    // ✅ Convert to structured JSON
-                    _a.sent();
+                    jsonFile = path.join(OUTPUT_JSON_DIR, "".concat(year, "_").concat(sanitize(section), ".json"));
+                    fs.writeFileSync(jsonFile, JSON.stringify(result, null, 2));
+                    console.log("\u2705 Saved JSON: ".concat(jsonFile));
+                    return [3 /*break*/, 3];
+                case 2:
+                    err_2 = _a.sent();
+                    console.error("\u274C Failed to parse PDF: ".concat(pdfFile), err_2);
+                    return [3 /*break*/, 3];
+                case 3: return [2 /*return*/];
+            }
+        });
+    });
+}
+function main() {
+    return __awaiter(this, void 0, void 0, function () {
+        var _i, years_1, year, _a, sections_1, section, pdfFile;
+        return __generator(this, function (_b) {
+            switch (_b.label) {
+                case 0:
+                    _i = 0, years_1 = years;
+                    _b.label = 1;
+                case 1:
+                    if (!(_i < years_1.length)) return [3 /*break*/, 8];
+                    year = years_1[_i];
+                    _a = 0, sections_1 = sections;
+                    _b.label = 2;
+                case 2:
+                    if (!(_a < sections_1.length)) return [3 /*break*/, 7];
+                    section = sections_1[_a];
+                    console.log("\n\uD83C\uDFAF Year: ".concat(year, ", Section: ").concat(section));
+                    return [4 /*yield*/, downloadPdf(year, section)];
+                case 3:
+                    pdfFile = _b.sent();
+                    if (!pdfFile) return [3 /*break*/, 5];
+                    return [4 /*yield*/, parsePdfToJson(pdfFile, year, section)];
+                case 4:
+                    _b.sent();
+                    return [3 /*break*/, 6];
+                case 5:
+                    console.error("\u26A0\uFE0F  Skipped parsing due to failed download: ".concat(year, " - ").concat(section));
+                    _b.label = 6;
+                case 6:
+                    _a++;
+                    return [3 /*break*/, 2];
+                case 7:
+                    _i++;
+                    return [3 /*break*/, 1];
+                case 8:
+                    console.log('\n✅ All done!');
                     return [2 /*return*/];
             }
         });
     });
 }
-scrapeABAPDFs();
+main();
