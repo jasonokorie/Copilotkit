@@ -31,7 +31,7 @@ export function Dashboard() {
 
   // Make data available to the Copilot
   useCopilotReadable({
-    description: "Dashboard data including sales trends, product performance, and category distribution",
+    description: "Dashboard data including percentage of students that pass the bar exam, the statistic of students employed by law firms with more than 500 employees, amount of students with federal clerkships, and total amount of scholarships awarded.",
     value: {
       salesData,
       productData,

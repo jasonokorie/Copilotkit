@@ -40,104 +40,151 @@ Object.defineProperty(exports, "__esModule", { value: true });
 var playwright_1 = require("playwright");
 var fs = require("fs");
 var path = require("path");
+var pdf = require('pdf-parse');
 var ABA_URL = 'https://www.abarequireddisclosures.org/';
+function extractScholarshipData(text) {
+    return __awaiter(this, void 0, void 0, function () {
+        var lines, result, _i, lines_1, line, match, match, match;
+        return __generator(this, function (_a) {
+            lines = text.split('\n');
+            result = {};
+            for (_i = 0, lines_1 = lines; _i < lines_1.length; _i++) {
+                line = lines_1[_i];
+                if (line.includes('Full Tuition')) {
+                    match = line.match(/Full Tuition\s+(\d+)/);
+                    if (match)
+                        result.full_tuition = Number(match[1]);
+                }
+                if (line.includes('Half Tuition')) {
+                    match = line.match(/Half Tuition\s+(\d+)/);
+                    if (match)
+                        result.half_tuition = Number(match[1]);
+                }
+                if (line.includes('No Scholarship')) {
+                    match = line.match(/No Scholarship\s+(\d+)/);
+                    if (match)
+                        result.no_scholarship = Number(match[1]);
+                }
+            }
+            return [2 /*return*/, result];
+        });
+    });
+}
 function scrapeABAPDFs() {
     return __awaiter(this, void 0, void 0, function () {
-        var browser, page, schoolLinks, outputDir, _i, schoolLinks_1, school, pdfTypes, _a, _b, _c, label, slug, link, pdfUrl, pdfResp, buffer, filename, err_1;
-        return __generator(this, function (_d) {
-            switch (_d.label) {
-                case 0: return [4 /*yield*/, playwright_1.chromium.launch()];
+        var browser, context, page, year, section, download, outputDir, filePath, pdfBuffer, stats, header, pdfData, parsedJson, jsonFilePath, error_1;
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0: return [4 /*yield*/, playwright_1.chromium.launch({ headless: false })];
                 case 1:
-                    browser = _d.sent();
-                    return [4 /*yield*/, browser.newPage()];
-                case 2:
-                    page = _d.sent();
-                    return [4 /*yield*/, page.goto(ABA_URL)];
-                case 3:
-                    _d.sent();
-                    // 1. Search for schools (you can customize search logic later)
-                    return [4 /*yield*/, page.click('text="Submit"')];
-                case 4:
-                    // 1. Search for schools (you can customize search logic later)
-                    _d.sent(); // triggers initial search
-                    // 2. Wait for the table to load
-                    return [4 /*yield*/, page.waitForSelector('#mainContent')];
-                case 5:
-                    // 2. Wait for the table to load
-                    _d.sent();
-                    return [4 /*yield*/, page.$$eval('table a[href*="Disclosure509"]', function (links) {
-                            return links.map(function (link) {
-                                var _a;
-                                return ({
-                                    name: ((_a = link.textContent) === null || _a === void 0 ? void 0 : _a.trim()) || '',
-                                    url: link.href,
-                                });
-                            });
+                    browser = _a.sent();
+                    return [4 /*yield*/, browser.newContext({
+                            acceptDownloads: true // 👈 allows Playwright to intercept native file downloads
                         })];
+                case 2:
+                    context = _a.sent();
+                    return [4 /*yield*/, context.newPage()];
+                case 3:
+                    page = _a.sent();
+                    return [4 /*yield*/, page.goto(ABA_URL)];
+                case 4:
+                    _a.sent();
+                    // 1. Go to the 509 Required Disclosure page
+                    return [4 /*yield*/, page.click('text="509 Required Disclosure"')];
+                case 5:
+                    // 1. Go to the 509 Required Disclosure page
+                    _a.sent(); // triggers initial search
+                    // -- 1. open the Compilation panel (same as before) -----------------------
+                    return [4 /*yield*/, page.waitForSelector('text=COMPILATION - ALL SCHOOLS DATA', { timeout: 10000 })];
                 case 6:
-                    schoolLinks = _d.sent();
-                    outputDir = path.join(__dirname, 'pdfs');
-                    if (!fs.existsSync(outputDir)) {
-                        fs.mkdirSync(outputDir);
-                        console.log('Created pdfs folder at:', outputDir);
-                    }
-                    else {
-                        console.log('pdfs folder already exists at:', outputDir);
-                    }
-                    _i = 0, schoolLinks_1 = schoolLinks;
-                    _d.label = 7;
+                    // -- 1. open the Compilation panel (same as before) -----------------------
+                    _a.sent();
+                    return [4 /*yield*/, page.click('text=COMPILATION - ALL SCHOOLS DATA')];
                 case 7:
-                    if (!(_i < schoolLinks_1.length)) return [3 /*break*/, 19];
-                    school = schoolLinks_1[_i];
-                    console.log("Fetching PDFs for: ".concat(school.name));
-                    return [4 /*yield*/, page.goto(school.url)];
+                    _a.sent();
+                    // -- 2. pick the Compilation-year  ------------------------------------------
+                    // a) by DOM position (0-based index) …
+                    return [4 /*yield*/, page.locator('select[aria-label="year select"]').nth(1).selectOption('2023')];
                 case 8:
-                    _d.sent();
-                    pdfTypes = {
-                        'Standard 509 Information Report': '509',
-                        'Employment Outcomes': 'employment',
-                        'Bar Passage Outcomes': 'barpassage',
-                    };
-                    _a = 0, _b = Object.entries(pdfTypes);
-                    _d.label = 9;
+                    // -- 2. pick the Compilation-year  ------------------------------------------
+                    // a) by DOM position (0-based index) …
+                    _a.sent();
+                    year = '2023';
+                    //    – or –
+                    //
+                    // b) by scoping to its wrapper <div class="compyearinput"> …
+                    return [4 /*yield*/, page.selectOption('div.compyearinput select', year)];
                 case 9:
-                    if (!(_a < _b.length)) return [3 /*break*/, 18];
-                    _c = _b[_a], label = _c[0], slug = _c[1];
-                    _d.label = 10;
+                    //    – or –
+                    //
+                    // b) by scoping to its wrapper <div class="compyearinput"> …
+                    _a.sent();
+                    // ---------- 3. wait until the Section dropdown is populated ----------------
+                    // 3️⃣ Wait until the Section dropdown is populated
+                    return [4 /*yield*/, page.waitForSelector('div.compSectioninput select option:not([value=""])', { state: 'attached', timeout: 15000 } // ⬅️ changed line
+                        )];
                 case 10:
-                    _d.trys.push([10, 16, , 17]);
-                    return [4 /*yield*/, page.$("a:has-text(\"".concat(label, "\")"))];
+                    // ---------- 3. wait until the Section dropdown is populated ----------------
+                    // 3️⃣ Wait until the Section dropdown is populated
+                    _a.sent();
+                    section = 'Grants and Scholarships';
+                    // 4️⃣ Choose the desired section
+                    return [4 /*yield*/, page.selectOption('div.compSectioninput select', { value: section })];
                 case 11:
-                    link = _d.sent();
-                    if (!link) return [3 /*break*/, 15];
-                    return [4 /*yield*/, link.getAttribute('href')];
+                    // 4️⃣ Choose the desired section
+                    _a.sent();
+                    return [4 /*yield*/, Promise.all([
+                            page.waitForEvent('download'), // 👈 NEW
+                            page.click('div.compbtn button:has-text("Generate Report")')
+                        ])];
                 case 12:
-                    pdfUrl = _d.sent();
-                    if (!pdfUrl) return [3 /*break*/, 15];
-                    return [4 /*yield*/, page.goto(pdfUrl)];
+                    download = (_a.sent())[0];
+                    outputDir = path.join(__dirname, 'compiled_pdfs');
+                    if (!fs.existsSync(outputDir))
+                        fs.mkdirSync(outputDir);
+                    filePath = path.join(outputDir, "".concat(year, "_").concat(section.replace(/\s+/g, "_"), ".pdf"));
+                    return [4 /*yield*/, download.saveAs(filePath)];
                 case 13:
-                    pdfResp = _d.sent();
-                    return [4 /*yield*/, (pdfResp === null || pdfResp === void 0 ? void 0 : pdfResp.body())];
+                    _a.sent();
+                    console.log("\u2705 Saved PDF to: ".concat(filePath));
+                    pdfBuffer = fs.readFileSync(filePath);
+                    stats = fs.statSync(filePath);
+                    if (stats.size < 1000) {
+                        console.error("\u274C PDF file is too small, likely empty or not downloaded correctly. Skipping: ".concat(filePath));
+                        return [2 /*return*/]; // Skip processing this file
+                    }
+                    header = pdfBuffer.toString().slice(0, 5);
+                    if (header !== '%PDF-') {
+                        console.error("\u274C Invalid PDF file format: ".concat(filePath));
+                        return [2 /*return*/]; // Skip processing this file
+                    }
+                    _a.label = 14;
                 case 14:
-                    buffer = _d.sent();
-                    filename = "".concat(school.name.replace(/[^\w\s]/gi, '').replace(/\s+/g, '_'), "_").concat(slug, ".pdf");
-                    fs.writeFileSync(path.join(outputDir, filename), buffer);
-                    console.log("Saved: ".concat(filename));
-                    _d.label = 15;
-                case 15: return [3 /*break*/, 17];
-                case 16:
-                    err_1 = _d.sent();
-                    console.warn("Failed to download ".concat(label, " for ").concat(school.name));
+                    _a.trys.push([14, 16, , 17]);
+                    return [4 /*yield*/, pdf(pdfBuffer)];
+                case 15:
+                    pdfData = _a.sent();
+                    console.log("📝 Extracted Text:", pdfData.text);
+                    parsedJson = {
+                        year: year,
+                        section: section,
+                        data: extractScholarshipData(pdfData.text)
+                    };
+                    console.log("✅ Parsed JSON:", JSON.stringify(parsedJson, null, 2));
+                    jsonFilePath = filePath.replace('.pdf', '.json');
+                    fs.writeFileSync(jsonFilePath, JSON.stringify(parsedJson, null, 2));
+                    console.log("\u2705 Saved JSON to: ".concat(jsonFilePath));
                     return [3 /*break*/, 17];
-                case 17:
-                    _a++;
-                    return [3 /*break*/, 9];
+                case 16:
+                    error_1 = _a.sent();
+                    console.error("\u274C Error parsing PDF:", error_1);
+                    return [3 /*break*/, 17];
+                case 17: 
+                // ✅ Convert to structured JSON
+                return [4 /*yield*/, browser.close()];
                 case 18:
-                    _i++;
-                    return [3 /*break*/, 7];
-                case 19: return [4 /*yield*/, browser.close()];
-                case 20:
-                    _d.sent();
+                    // ✅ Convert to structured JSON
+                    _a.sent();
                     return [2 /*return*/];
             }
         });
